@@ -122,6 +122,47 @@ function Clean-Name {
     return ($t -replace '\s+', ' ').Trim()
 }
 
+$script:MemApiReady = $null
+function Get-PhysicalMemoryFallback {
+    if ($script:MemApiReady -eq $false) { return $null }
+    if ($script:MemApiReady -ne $true) {
+        $src = @(
+            'using System;'
+            'using System.Runtime.InteropServices;'
+            'public class SysfetchMem {'
+            '  [StructLayout(LayoutKind.Sequential)]'
+            '  public struct MEMORYSTATUSEX {'
+            '    public uint dwLength; public uint dwMemoryLoad;'
+            '    public ulong ullTotalPhys; public ulong ullAvailPhys;'
+            '    public ulong ullTotalPageFile; public ulong ullAvailPageFile;'
+            '    public ulong ullTotalVirtual; public ulong ullAvailVirtual;'
+            '    public ulong ullAvailExtendedVirtual;'
+            '  }'
+            '  [DllImport("kernel32.dll", SetLastError=true)]'
+            '  public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);'
+            '  public static ulong[] Get() {'
+            '    MEMORYSTATUSEX m = new MEMORYSTATUSEX();'
+            '    m.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));'
+            '    if (!GlobalMemoryStatusEx(ref m)) return new ulong[0];'
+            '    return new ulong[] { m.ullTotalPhys, m.ullAvailPhys, m.dwMemoryLoad };'
+            '  }'
+            '}'
+        )
+        try {
+            Add-Type -TypeDefinition ($src -join [Environment]::NewLine) -ErrorAction Stop
+            $script:MemApiReady = $true
+        } catch {
+            $script:MemApiReady = $false
+            return $null
+        }
+    }
+    try {
+        $r = [SysfetchMem]::Get()
+        if ($r -and $r.Count -ge 2) { return @([double]$r[0], [double]$r[1]) }
+    } catch { }
+    return $null
+}
+
 function Get-SysInfo {
     $cs  = Get-CimInstance Win32_ComputerSystem  -ErrorAction SilentlyContinue
     $os  = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
@@ -205,6 +246,10 @@ function Get-SysInfo {
         $memFree = [double]$os.FreePhysicalMemory * 1KB
     }
     if ($memTotal -le 0) {
+        $fallback = Get-PhysicalMemoryFallback
+        if ($fallback) { $memTotal = $fallback[0]; $memFree = $fallback[1] }
+    }
+    if ($memTotal -le 0) {
         try {
             $avail = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples[0].CookedValue
             if ($avail) { $memFree = [double]$avail * 1MB }
@@ -257,6 +302,9 @@ function Get-SysInfo {
     if ($os -and $os.LastBootUpTime) {
         try { $uptime = (Get-Date) - $os.LastBootUpTime } catch { $uptime = $null }
     }
+    if (-not $uptime) {
+        try { $tick = [Environment]::TickCount64; if ($tick -ge 60000) { $uptime = [TimeSpan]::FromMilliseconds($tick) } } catch { $uptime = $null }
+    }
 
     $ip = $null
     try {
@@ -286,7 +334,7 @@ function Get-SysInfo {
         BIOS      = $biosVer
         CPU       = "$cpuName$cpuCore"
         GPU       = $gpus
-        Memory    = [pscustomobject]@{ Total = $memTotal; Free = $memFree; Used = [Math]::Max(0, $memTotal - $memFree) }
+        Memory    = [pscustomobject]@{ Total = $memTotal; Free = $memFree; Used = [Math]::Max([double]0, $memTotal - $memFree) }
         Disks     = $disks
         Battery   = $battery
         Display   = $res
