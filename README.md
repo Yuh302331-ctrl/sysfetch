@@ -62,6 +62,17 @@ powershell -ExecutionPolicy Bypass -File .\sysfetch.ps1
 说明 WMI 不可用（被安全软件限制，或 `Winmgmt` 服务没在跑），这时只能读到可用内存。
 可以用 `winmgmt /verifyrepository` 检查 WMI 是否正常。
 
+## 下载
+
+无需克隆仓库，直接下载打包文件：
+
+1. 前往 [Releases 最新版](https://github.com/Yuh302331-ctrl/sysfetch/releases/latest) 下载 `sysfetch-v1.0.0.zip`
+2. 解压得到 `sysfetch.ps1`，按上面的「快速开始」运行
+
+> English: single-file, zero-dependency PowerShell tool. Grab the zip from the
+> [latest release](https://github.com/Yuh302331-ctrl/sysfetch/releases/latest), extract, and run — no install needed.
+
+
 ## 许可证
 
 未指定。
