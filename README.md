@@ -75,4 +75,8 @@ powershell -ExecutionPolicy Bypass -File .\sysfetch.ps1
 
 ## 许可证
 
-未指定。
+MIT
+
+## 作者
+
+👤 [Yuh302331-ctrl](https://github.com/Yuh302331-ctrl) · 🏠 [个人主页](https://yuh302331-ctrl.github.io)
