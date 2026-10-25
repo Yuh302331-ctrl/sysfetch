@@ -92,6 +92,15 @@ function Row {
     return (Cl $script:Palette.Cyan $Label.PadRight(11)) + (Cl $script:Palette.Text $Value)
 }
 
+function Write-ReportLine {
+    param([string]$Text)
+    if ($script:UseColor) {
+        Write-Host $Text
+    } else {
+        Write-Output $Text
+    }
+}
+
 function Fmt-Size {
     param([double]$Bytes)
     if ($Bytes -le 0) { return '0 B' }
@@ -281,9 +290,16 @@ function Get-SysInfo {
 
     $battery = $null
     if ($bat) {
-        $state = 'Discharging'
-        if ($bat.BatteryStatus -eq 2) { $state = 'Charging' }
-        elseif ($bat.BatteryStatus -eq 3) { $state = 'Fully charged' }
+        $state = switch ([int]$bat.BatteryStatus) {
+            1 { 'Other' }
+            2 { 'Unknown' }
+            3 { 'Fully charged' }
+            4 { 'Low' }
+            5 { 'Critical' }
+            { $_ -in 6, 7, 8, 9 } { 'Charging' }
+            11 { 'Partially charged' }
+            default { 'Unknown' }
+        }
         $battery = [pscustomobject]@{
             Percent = [int]$bat.EstimatedChargeRemaining
             State   = $state
@@ -308,10 +324,26 @@ function Get-SysInfo {
 
     $ip = $null
     try {
-        $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-            Where-Object { $_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown' } |
-            Select-Object -First 1).IPAddress
+        $route = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+            Sort-Object RouteMetric, InterfaceMetric |
+            Select-Object -First 1
+        if ($route) {
+            $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex -ErrorAction Stop |
+                Where-Object { $_.AddressState -eq 'Preferred' } |
+                Select-Object -First 1).IPAddress
+        }
     } catch { $ip = $null }
+    if (-not $ip) {
+        try {
+            $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+                Where-Object {
+                    $_.AddressState -eq 'Preferred' -and
+                    $_.IPAddress -notlike '127.*' -and
+                    $_.InterfaceAlias -notmatch 'Loopback|vEthernet|Virtual|Docker|WSL|Tailscale|ZeroTier'
+                } |
+                Select-Object -First 1).IPAddress
+        } catch { $ip = $null }
+    }
     if (-not $ip) {
         try {
             $ip = [System.Net.Dns]::GetHostAddresses($env:COMPUTERNAME) |
@@ -421,8 +453,8 @@ if (-not $NoLogo) { $logoLines = @(Get-LogoLines $Logo) }
 
 $indent = '  '
 if ($logoLines.Count -eq 0) {
-    foreach ($r in $rows) { Write-Host ($indent + $r) }
-    Write-Host ''
+    foreach ($r in $rows) { Write-ReportLine ($indent + $r) }
+    Write-ReportLine ''
     return
 }
 
@@ -447,6 +479,6 @@ for ($i = 0; $i -lt $total; $i++) {
     }
     $right = ''
     if ($i -lt $rows.Count) { $right = $rows[$i] }
-    Write-Host ($indent + $left + '   ' + $right)
+    Write-ReportLine ($indent + $left + '   ' + $right)
 }
-Write-Host ''
+Write-ReportLine ''
