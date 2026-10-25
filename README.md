@@ -29,6 +29,9 @@ powershell -ExecutionPolicy Bypass -File .\sysfetch.ps1
 # 纯文本
 .\sysfetch.ps1 -NoColor
 
+# 写入报告（PowerShell 5.1 / 7 均可）
+.\sysfetch.ps1 -NoColor -NoLogo > report.txt
+
 # 只取数据接管道
 .\sysfetch.ps1 -Json | ConvertFrom-Json | Select-Object CPU, OS, Uptime
 

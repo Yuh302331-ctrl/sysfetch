@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check syntax and analyzer errors
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.\sysfetch.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
+          $issues = Invoke-ScriptAnalyzer -Path .\sysfetch.ps1 -Severity Error
+          if ($issues) {
+            $issues | Format-Table -AutoSize
+            exit 1
+          }
+
+      - name: Smoke test Windows PowerShell 5.1
+        shell: powershell
+        run: .\tests\smoke.ps1
+
+      - name: Smoke test PowerShell 7
+        shell: pwsh
+        run: .\tests\smoke.ps1
